@@ -96,7 +96,7 @@ class User(AbstractUser):
 class Shop(models.Model):
     name = models.CharField(max_length=50, verbose_name="Название магазина")
     url = models.URLField(verbose_name="Ссылка", null=True, blank=True)
-    filename = models.CharField(max_length=50, null=True, blank=True)
+    filename = models.FileField()
 
     user = models.OneToOneField(
         User,

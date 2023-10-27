@@ -1,0 +1,38 @@
+from django.urls import path
+from .views import (
+    RegisterUserView,
+    ConfirmEmailView,
+    LoginUserView,
+    UserDetailsView,
+    SearchProductView,
+    ShopView,
+    CreateShopView,
+    UpdateShopView,
+    UpdateShopStatusView,
+    CategoryView,
+    ProductsView,
+    UpdatePriceView,
+    CartView,
+    ContactView,
+    ShopOrdersView,
+    UserOrdersView,
+)
+
+urlpatterns = [
+    path("user/register/", RegisterUserView.as_view(), name="user-register"),
+    path("user/confirm/", ConfirmEmailView.as_view(), name="user-confirm"),
+    path("user/login/", LoginUserView.as_view(), name="user-login"),
+    path("user/details/", UserDetailsView.as_view(), name="user-details"),
+    path("user/orders/", UserOrdersView.as_view(), name="user-orders"),
+    path("shops/", ShopView.as_view(), name="shops"),
+    path("shops/create", CreateShopView.as_view(), name="shop-create"),
+    path("shops/update", UpdateShopView.as_view(), name="shop-update"),
+    path("shops/status", UpdateShopStatusView.as_view(), name="shop-update-status"),
+    path("shops/orders", ShopOrdersView.as_view(), name="shop-orders"),
+    path("category/", CategoryView.as_view(), name="category"),
+    path("cart/", CartView.as_view(), name="cart"),
+    path("contacts/", ContactView.as_view(), name="contacts"),
+    path("products/", ProductsView.as_view(), name="products"),
+    path("products/update", UpdatePriceView.as_view(), name="update-price"),
+    path("products/search/", SearchProductView.as_view(), name="search"),
+]

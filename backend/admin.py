@@ -4,7 +4,7 @@ from .models import Shop, Category, Product
 
 @admin.register(Shop)
 class ShopAdmin(admin.ModelAdmin):
-    list_display = ["id", "name", "url", "filename"]
+    list_display = ["id", "name", "url"]
     list_filter = ["id", "name"]
 
 

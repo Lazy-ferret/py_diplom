@@ -1,0 +1,16 @@
+# примеры API-запросов
+
+@baseUrl = http://localhost:8000
+
+###
+
+# создание пользователя
+POST {{baseUrl}}/user/register
+Content-Type: application/json
+
+{
+  "name": "ESP34",
+  "description": "Датчик "
+}
+
+
