@@ -6,3 +6,4 @@ requests
 pyyaml
 ujson
 django-filter
+python-dotenv
