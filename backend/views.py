@@ -1,18 +1,21 @@
+from distutils.util import strtobool
+
 from django.contrib.auth import get_user_model, authenticate
+from django.contrib.auth.password_validation import validate_password
+from django.core.validators import URLValidator
+from django.core.exceptions import ValidationError, ObjectDoesNotExist
+from django.core.mail import send_mail
+from django.db.utils import IntegrityError
+
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.authtoken.models import Token
 from rest_framework.permissions import IsAuthenticated
-from django.core.validators import URLValidator
-from django.core.exceptions import ValidationError
-from django.http import HttpResponse
-from django.shortcuts import render
 from rest_framework.views import APIView
 from rest_framework.generics import ListAPIView
-from django.http import JsonResponse
+
 from requests import get
 from yaml import load as load_yaml, Loader
-from django.contrib.auth.password_validation import validate_password
 
 from backend.models import (
     ConfirmEmailToken,
@@ -25,7 +28,6 @@ from backend.models import (
     Order,
     OrderItem,
     Contact,
-    # User,
 )
 from backend.permissions import IsShop
 from backend.serializers import (
@@ -36,8 +38,6 @@ from backend.serializers import (
     OrderSerializer,
     ContactSerializer,
 )
-from backend.signals import new_user_registered
-from django.core.mail import send_mail
 from orders.settings import EMAIL_HOST_PASSWORD, EMAIL_HOST_USER
 
 User = get_user_model()
@@ -45,10 +45,17 @@ User = get_user_model()
 
 class RegisterUserView(APIView):
     def post(self, request):
-        data = request.data
-
         serializer = UserSerializer(data=request.data)
         if serializer.is_valid():
+            try:
+                validate_password(request.data["password"])
+            except Exception as password_error:
+                error_array = []
+                for item in password_error:
+                    error_array.append(item)
+                return Response(
+                    {"error": error_array}, status=status.HTTP_400_BAD_REQUEST
+                )
             user_type = serializer.validated_data.get("type", "buyer")
             user = User.objects.create_user(
                 email=serializer.validated_data["email"],
@@ -75,15 +82,20 @@ class RegisterUserView(APIView):
 class ConfirmEmailView(APIView):
     def post(self, request):
         key = request.data.get("key")
-        token = ConfirmEmailToken.objects.get(key=key)
-        if token:
+        try:
+            token = ConfirmEmailToken.objects.get(key=key)
             user = token.user
             user.is_active = True
             user.save()
-            return Response({"message": "Email confirmed"}, status=status.HTTP_200_OK)
-        return Response(
-            {"error": "Invalid or expired token"}, status=status.HTTP_400_BAD_REQUEST
-        )
+            return Response(
+                {"message": "Адрес электронной почты подтвержден"},
+                status=status.HTTP_200_OK,
+            )
+        except ObjectDoesNotExist:
+            return Response(
+                {"error": "Токен подтверждения не найден или устарел"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
 
 class LoginUserView(APIView):
@@ -94,7 +106,9 @@ class LoginUserView(APIView):
         if user is not None:
             token, created = Token.objects.get_or_create(user=user)
             return Response({"token": token.key}, status=status.HTTP_200_OK)
-        return Response({"error": "Invalid login data"}, status=status.HTTP_200_OK)
+        return Response(
+            {"error": "Неверные данные для входа"}, status=status.HTTP_200_OK
+        )
 
 
 class UserDetailsView(APIView):
@@ -118,6 +132,7 @@ class ContactView(APIView):
     def get(self, request):
         contacts = Contact.objects.filter(user=request.user)
         serializer = ContactSerializer(contacts, many=True)
+        return Response(serializer.data)
 
     def post(self, request):
         serializer = ContactSerializer(data=request.data)
@@ -139,13 +154,19 @@ class CreateShopView(APIView):
         user = request.user
         if user.type != "shop":
             return Response(
-                {"error": "USer is not a shop"}, status=status.HTTP_400_BAD_REQUEST
+                {"error": "Пользователь не является магазином"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
-
         serializer = ShopSerializer(data=request.data)
         if serializer.is_valid():
-            shop = serializer.save(user=user)
-            return Response(ShopSerializer(shop).data, status=status.HTTP_201_CREATED)
+            try:
+                shop = serializer.save(user=user)
+                return Response(
+                    ShopSerializer(shop).data, status=status.HTTP_201_CREATED
+                )
+            except IntegrityError as e:
+                error = str(e)
+                return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -156,23 +177,81 @@ class UpdateShopView(APIView):
         shop_id = request.data.get("shop_id")
         shop = Shop.objects.filter(id=shop_id, user=request.user).first()
         if shop:
+            url = request.data.get("url")
+            if url:
+                validate_url = URLValidator()
+                try:
+                    validate_url(url)
+                except ValidationError as e:
+                    return Response(
+                        {"error": str(e)}, status=status.HTTP_400_BAD_REQUEST
+                    )
+                else:
+                    stream = get(url).content
+
+                    data = load_yaml(stream, Loader=Loader)
+                    for category in data["categories"]:
+                        category_object, _ = Category.objects.get_or_create(
+                            id=category["id"], name=category["name"]
+                        )
+                        category_object.shops.add(shop.id)
+                        category_object.save()
+                    ProductInfo.objects.filter(shop_id=shop.id).delete()
+                    for item in data["goods"]:
+                        product, _ = Product.objects.get_or_create(
+                            name=item["name"], category_id=item["category"]
+                        )
+                        product_info = ProductInfo.objects.create(
+                            product_id=product.id,
+                            external_id=item["id"],
+                            model=item["model"],
+                            price=item["price"],
+                            price_rrc=item["price_rrc"],
+                            quantity=item["quantity"],
+                            shop_id=shop.id,
+                        )
+                        for name, value in item["parameters"].items():
+                            parameter_object, _ = Parameter.objects.get_or_create(
+                                name=name
+                            )
+                            ProductParameter.objects.create(
+                                product_info_id=product_info.id,
+                                parameter_id=parameter_object.id,
+                                value=value,
+                            )
+                    return Response(
+                        {"message": "Информация о магазине обновлена"},
+                        status=status.HTTP_200_OK,
+                    )
             serializer = ShopSerializer(shop, data=request.data)
             if serializer.is_valid():
                 serializer.save()
                 return Response(serializer.data)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        return Response({"error": "Shop not found"}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {"error": "Магазин не найден"}, status=status.HTTP_400_BAD_REQUEST
+        )
 
 
 class UpdateShopStatusView(APIView):
     permission_classes = [IsAuthenticated, IsShop]
 
     def put(self, request):
-        user = request.user
-        user.is_active = request.data.get("is_active")
-        user.save()
-        return Response({"message": "Status updated"})
+        state = request.data.get("state")
+        if state:
+            try:
+                Shop.objects.filter(user_id=request.user.id).update(
+                    state=strtobool(state)
+                )
+                return Response({"message": "Status updated"})
+            except ValueError as error:
+                return Response(
+                    {"error": str(error)}, status=status.HTTP_400_BAD_REQUEST
+                )
+        return Response(
+            {"error": "Статус не указан"}, status=status.HTTP_400_BAD_REQUEST
+        )
 
 
 class CategoryView(ListAPIView):
@@ -193,53 +272,28 @@ class SearchProductView(APIView):
         return Response(serializer.data)
 
 
-class UpdatePriceView(APIView):
-    permission_classes = [IsAuthenticated, IsShop]
-
-    def put(self, request):
-        shop_id = request.data.get("shop_id")
-        product_infos = request.data.get("product_infos", [])
-        shop = Shop.objects.filter(id=shop_id).first()
-        if shop:
-            for product_info_data in product_infos:
-                product_info = ProductInfo.objects.filter(
-                    id=product_info_data.get("id")
-                ).first()
-                if product_info:
-                    serializer = ProductSerializer(product_info, data=product_info_data)
-                    if serializer.is_valid():
-                        serializer.save()
-                    else:
-                        return Response(
-                            serializer.errors, status=status.HTTP_400_BAD_REQUEST
-                        )
-
-            return Response({"message": "Prices updated"})
-        return Response({"error": "Shop not found"}, status=status.HTTP_400_BAD_REQUEST)
-
-
 class CartView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        order = Order.objects.filter(user=request.user, state="cart").first()
+        order = Order.objects.filter(user=request.user, state="basket").first()
         if order:
             serializer = OrderSerializer(order)
             return Response(serializer.data)
-        return Response({"massage": "Cart is empty"})
+        return Response({"message": "Корзина пуста"})
 
     def post(self, request):
         product_id = request.data.get("product_id")
         quantity = request.data.get("quantity", 1)
         product = Product.objects.filter(id=product_id).first()
         if product:
-            order = Order.objects.filter(user=request.user, state="cart")
+            order = Order.objects.filter(user=request.user, state="basket")
             if not order:
-                order = Order.objects.create(user=request.user, state="cart")
+                order = Order.objects.create(user=request.user, state="basket")
             OrderItem.objects.create(order=order, product=product, quantity=quantity)
-            return Response({"message": "Product added to cart"})
+            return Response({"message": "Товар добавлен в корзину"})
         return Response(
-            {"error": "Product not found"}, status=status.HTTP_400_BAD_REQUEST
+            {"error": "Товар не найден"}, status=status.HTTP_400_BAD_REQUEST
         )
 
     def delete(self, request):
@@ -249,12 +303,11 @@ class CartView(APIView):
             item = OrderItem.objects.filter(order=order, product_id=product_id).first()
             if item:
                 item.delete()
-                return Response({"message": "Product removed from cart"})
+                return Response({"message": "Товар удален из корзины"})
             return Response(
-                {"error": "Product not found"}, status=status.HTTP_400_BAD_REQUEST
+                {"error": "Товар не найден"}, status=status.HTTP_400_BAD_REQUEST
             )
-
-        return Response({"error": "Cart is empty"}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"error": "Коpзина пуста"}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class ShopOrdersView(APIView):
@@ -280,49 +333,3 @@ class UserOrdersView(APIView):
             serializer.save(user=request.user)
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-# class PartnerUpdate(APIView):
-# def post(self, request, *args, **kwargs):
-#     if not request.user.is_authenticated:
-#         return JsonResponse({'Status': False, 'Error': 'Log in required'}, status=403)
-#
-#     if request.user.type != 'shop':
-#         return JsonResponse({'Status': False, 'Error': 'Только для магазинов'}, status=403)
-#
-#     url = request.data.get('url')
-#     if url:
-#         validate_url = URLValidator()
-#         try:
-#             validate_url(url)
-#         except ValidationError as e:
-#             return JsonResponse({'Status': False, 'Error': str(e)})
-#         else:
-#             stream = get(url).content
-#
-#             data = load_yaml(stream, Loader=Loader)
-#
-#             shop, _ = Shop.objects.get_or_create(name=data['shop'], user_id=request.user.id)
-#             for category in data['categories']:
-#                 category_object, _ = Category.objects.get_or_create(id=category['id'], name=category['name'])
-#                 category_object.shops.add(shop.id)
-#                 category_object.save()
-#             ProductInfo.objects.filter(shop_id=shop.id).delete()
-#             for item in data['goods']:
-#                 product, _ = Product.objects.get_or_create(name=item['name'], category_id=item['category'])
-#
-#                 product_info = ProductInfo.objects.create(product_id=product.id,
-#                                                           external_id=item['id'],
-#                                                           model=item['model'],
-#                                                           price=item['price'],
-#                                                           price_rcc=item['price_rcc'],
-#                                                           quantity=item['quantity'],
-#                                                           shop_id=shop.id)
-#                 for name, value in item['paramaters'].items():
-#                     parameter_object, _ = Parameter.objects.get_or_create(name=name)
-#                     ProductParameter.objects.create(product_info_id=product_info.id,
-#                                                     parameter_id=parameter_object.id,
-#                                                     value=value)
-#             return JsonResponse({'Status': True})
-#
-#     return JsonResponse({'Status': False, 'Errors': 'Не указаны все необходимые аргументы'})

@@ -1,5 +1,5 @@
-from django.contrib.auth.validators import UnicodeUsernameValidator
 from django.db import models
+from django.contrib.auth.validators import UnicodeUsernameValidator
 from django.contrib.auth.models import AbstractUser
 from django.contrib.auth.base_user import BaseUserManager
 from django.utils.translation import gettext_lazy as _
@@ -303,13 +303,13 @@ class OrderItem(models.Model):
         ]
 
 
-@staticmethod
 class ConfirmEmailToken(models.Model):
     class Meta:
         verbose_name = "Токен подтверждение Email"
         verbose_name_plural = "Токены подтверждение Email"
 
-    def generate_key(self):
+    @staticmethod
+    def generate_key():
         return get_token_generator().generate_token()
 
     user = models.ForeignKey(
