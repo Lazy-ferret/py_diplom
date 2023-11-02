@@ -4,7 +4,6 @@ from django.contrib.auth import get_user_model, authenticate
 from django.contrib.auth.password_validation import validate_password
 from django.core.validators import URLValidator
 from django.core.exceptions import ValidationError, ObjectDoesNotExist
-from django.core.mail import send_mail
 from django.db.utils import IntegrityError
 
 from rest_framework.response import Response
@@ -38,7 +37,7 @@ from backend.serializers import (
     OrderSerializer,
     ContactSerializer,
 )
-from orders.settings import EMAIL_HOST_PASSWORD, EMAIL_HOST_USER
+from backend.tasks import new_user_registered, user_email_confirmed, new_order
 
 User = get_user_model()
 
@@ -67,14 +66,8 @@ class RegisterUserView(APIView):
 
             token = ConfirmEmailToken.objects.create(user=user)
 
-            send_mail(
-                "Подтверждение электронной почты",
-                f"Ваш ключ подтверждения: {token.key}",
-                EMAIL_HOST_USER,
-                [user.email],
-                auth_password=EMAIL_HOST_PASSWORD,
-                fail_silently=False,
-            )
+            new_user_registered.delay(token=token.key, email=user.email)
+
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -87,6 +80,7 @@ class ConfirmEmailView(APIView):
             user = token.user
             user.is_active = True
             user.save()
+            user_email_confirmed.delay(username=user.username, email=user.email)
             return Response(
                 {"message": "Адрес электронной почты подтвержден"},
                 status=status.HTTP_200_OK,
@@ -329,7 +323,9 @@ class UserOrdersView(APIView):
 
     def post(self, request):
         serializer = OrderSerializer(data=request.data)
+        user = request.user
         if serializer.is_valid():
-            serializer.save(user=request.user)
+            serializer.save(user=user)
+            new_order.delay(user.email)
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

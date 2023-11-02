@@ -7,3 +7,9 @@ pyyaml
 ujson
 django-filter
 python-dotenv
+redis==5.0.1
+celery
+gunicorn==20.1.0
+
+
+
