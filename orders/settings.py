@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "rest_framework.authtoken",
     "django_rest_passwordreset",
+    "drf_spectacular",
     "backend",
 ]
 
@@ -164,8 +165,16 @@ REST_FRAMEWORK = {
         "user": "15/minute",
         "anon": "5/minute",
     },
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
 
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL")
 CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND")
 CELERY_IMPORTS = ["backend.tasks"]
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Orders App API',
+    'DESCRIPTION': 'backend applications for ordering goods in stores',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+}

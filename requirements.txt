@@ -12,6 +12,7 @@ celery
 pytest-django
 pytest-cov
 model-bakery
+drf-spectacular
 
 
 
