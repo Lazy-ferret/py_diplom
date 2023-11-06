@@ -33,6 +33,7 @@ ALLOWED_HOSTS = ["*"]
 # Application definition
 
 INSTALLED_APPS = [
+    "baton",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -43,7 +44,10 @@ INSTALLED_APPS = [
     "rest_framework.authtoken",
     "django_rest_passwordreset",
     "drf_spectacular",
+    "social_django",
     "backend",
+    "easy_thumbnails",
+    "baton.autodiscover",
 ]
 
 MIDDLEWARE = [
@@ -69,6 +73,8 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "social_django.context_processors.backends",
+                "social_django.context_processors.login_redirect",
             ],
         },
     },
@@ -165,7 +171,7 @@ REST_FRAMEWORK = {
         "user": "15/minute",
         "anon": "5/minute",
     },
-    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
 
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL")
@@ -173,8 +179,84 @@ CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND")
 CELERY_IMPORTS = ["backend.tasks"]
 
 SPECTACULAR_SETTINGS = {
-    'TITLE': 'Orders App API',
-    'DESCRIPTION': 'backend applications for ordering goods in stores',
-    'VERSION': '1.0.0',
-    'SERVE_INCLUDE_SCHEMA': False,
+    "TITLE": "Orders App API",
+    "DESCRIPTION": "backend applications for ordering goods in stores",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+}
+
+SOCIAL_AUTH_JSONFIELD_ENABLED = True
+
+AUTHENTICATION_BACKENDS = (
+    "social_core.backends.vk.VKOAuth2",
+    "django.contrib.auth.backends.ModelBackend",
+)
+
+SOCIAL_AUTH_PIPELINE = (
+    "social_core.pipeline.social_auth.social_details",
+    "social_core.pipeline.social_auth.social_uid",
+    "social_core.pipeline.social_auth.social_user",
+    "social_core.pipeline.user.get_username",
+    "social_core.pipeline.social_auth.associate_by_email",
+    "social_core.pipeline.user.create_user",
+    "social_core.pipeline.social_auth.associate_user",
+    "social_core.pipeline.social_auth.load_extra_data",
+    "social_core.pipeline.user.user_details",
+)
+
+SOCIAL_AUTH_VK_OAUTH2_KEY = os.getenv("SOCIAL_AUTH_VK_OAUTH2_KEY")
+SOCIAL_AUTH_VK_OAUTH2_SECRET = os.getenv("SOCIAL_AUTH_VK_OAUTH2_SECRET")
+SOCIAL_AUTH_VK_OAUTH2_SCOPE = ["email"]
+
+THUMBNAIL_ALIASES = {
+    "": {
+        "avatar": {"size": (100, 100), "crop": True},
+    },
+}
+
+BATON = {
+    "SITE_HEADER": "Baton",
+    "SITE_TITLE": "Baton",
+    "INDEX_TITLE": "Site administration",
+    "SUPPORT_HREF": "https://github.com/otto-torino/django-baton/issues",
+    "COPYRIGHT": 'copyright © 2020 <a href="https://www.otto.to.it">Otto srl</a>',  # noqa
+    "POWERED_BY": '<a href="https://www.otto.to.it">Otto srl</a>',
+    "CONFIRM_UNSAVED_CHANGES": True,
+    "SHOW_MULTIPART_UPLOADING": True,
+    "ENABLE_IMAGES_PREVIEW": True,
+    "CHANGELIST_FILTERS_IN_MODAL": True,
+    "CHANGELIST_FILTERS_ALWAYS_OPEN": False,
+    "CHANGELIST_FILTERS_FORM": True,
+    "MENU_ALWAYS_COLLAPSED": False,
+    "MENU_TITLE": "Menu",
+    "MESSAGES_TOASTS": False,
+    "GRAVATAR_DEFAULT_IMG": "retro",
+    "GRAVATAR_ENABLED": True,
+    "LOGIN_SPLASH": "/static/core/img/login-splash.png",
+    "FORCE_THEME": None,
+    "SEARCH_FIELD": {
+        "label": "Search contents...",
+        "url": "/search/",
+    },
+    "MENU": (
+        {"type": "title", "label": "main", "apps": ("auth",)},
+        {
+            "type": "app",
+            "name": "auth",
+            "label": "Authentication",
+            "icon": "fa fa-lock",
+            "models": ({"name": "user", "label": "Пользователи"}),
+        },
+        {"type": "model", "label": "Магазины", "name": "shop", "app": "backend"},
+        {"type": "model", "label": "Категории", "name": "category", "app": "backend"},
+        {"type": "model", "label": "Товары", "name": "product", "app": "backend"},
+        {
+            "type": "model",
+            "label": "Информация о товарах",
+            "name": "product_info",
+            "app": "backend",
+        },
+        {"type": "model", "label": "Контакты", "name": "contact", "app": "backend"},
+        {"type": "model", "label": "Заказы", "name": "order", "app": "backend"},
+    ),
 }

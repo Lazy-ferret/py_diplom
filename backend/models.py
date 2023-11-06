@@ -4,6 +4,7 @@ from django.contrib.auth.models import AbstractUser
 from django.contrib.auth.base_user import BaseUserManager
 from django.utils.translation import gettext_lazy as _
 from django_rest_passwordreset.tokens import get_token_generator
+from easy_thumbnails.fields import ThumbnailerImageField
 
 
 STATE_CHOICES = (
@@ -82,6 +83,10 @@ class User(AbstractUser):
         verbose_name="Тип пользователя",
         choices=USER_TYPE_CHOICES,
         default="buyer",
+    )
+    avatar_url = models.URLField(blank=True, null=True)
+    avatar_thumbnail = ThumbnailerImageField(
+        upload_to="avatars/", blank=True, null=True
     )
 
     class Meta:

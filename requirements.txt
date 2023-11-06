@@ -13,6 +13,6 @@ pytest-django
 pytest-cov
 model-bakery
 drf-spectacular
-
-
-
+social-auth-app-django
+easy-thumbnails
+django-baton

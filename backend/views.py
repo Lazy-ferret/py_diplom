@@ -37,7 +37,12 @@ from backend.serializers import (
     OrderSerializer,
     ContactSerializer,
 )
-from backend.tasks import new_user_registered, user_email_confirmed, new_order
+from backend.tasks import (
+    new_user_registered,
+    user_email_confirmed,
+    new_order,
+    process_user_avatar,
+)
 
 User = get_user_model()
 
@@ -63,6 +68,8 @@ class RegisterUserView(APIView):
                 type=user_type,
             )
             user.save()
+            if user.avatar_url:
+                process_user_avatar.delay(user)
 
             token = ConfirmEmailToken.objects.create(user=user)
 
